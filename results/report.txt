@@ -1,0 +1,41 @@
+Table 1  Five-size Pythia audit (all-six-defined total-ladder rule)
+ Size  Def0/f/m  Hfmax             Sel.    pf  Init  Final  Gamma    pG  pass
+  70M    8/12/8   .893      Pk-type-low  .083  .667   .893   .227  .278 False
+ 160M    8/12/8   .861      On-type-low  .153  .770   .861   .091  .403 False
+ 410M    8/12/8  1.000      Pk-type-low  .003  .857  1.000   .143  .314 False
+   1B    8/12/8   .861    On-sent-ridge  .125  .705   .861   .157  .422 False
+ 1.4B    8/12/8   .899     COM-sent-low  .072  .770   .899   .129  .431 False
+POOLED  final max H=1.000 p=.003 | init max=.857 p=.178 | Gamma=.143 p=.428 | diam=.765 (Hmin=.235, Hmax=1.000)
+
+Partial order: best final 70M HR_max=1.000 p=.083; pooled Gamma_R=.000 p=.750
+
+Table 2  Pythia-410M trajectory (full English-EWT dev)
+Checkpoint    Def  Hcmax  Match    pc  Gamma    pG
+     step0   8/12   .770   .770  .219     --    --
+  step1000  12/12   .899   .899  .064   .129  .292
+  step4000  12/12   .899   .899  .081   .129  .325
+ step16000  12/12   .925   .861  .050   .091  .333
+ step64000  12/12   .939   .897  .039   .127  .300
+      main  12/12   .868   .868  .103   .098  .294
+
+Table 3  Seed robustness (primary vs independent seed)
+ Size  Seed  Def0/f/m  Init  Final    pf  Gamma    pG
+  70M  2026    8/12/8  .667   .893  .083   .227  .278
+  70M  4177    8/12/8  .857   .899  .053   .041  .528
+ 160M  2026    8/12/8  .770   .861  .153   .091  .403
+ 160M  4177    8/12/8  .851   .899  .058   .048  .525
+ 410M  2026    8/12/8  .857  1.000  .003   .143  .314
+ 410M  4177    8/12/8  .664   .928  .058   .263  .264
+
+LaTeX (Table 1):
+\begin{tabular}{lllllrrrr}
+\toprule
+Size & Def. 0/f/m & $H^f_{\max}$ & Sel. & $p_f$ & Init max & Final max & $\Gamma$ & $p_\Gamma$ \\
+\midrule
+70M & 8/12/8 & .893 & Pk-type-low & .083 & .667 & .893 & .227 & .278 \\
+160M & 8/12/8 & .861 & On-type-low & .153 & .770 & .861 & .091 & .403 \\
+410M & 8/12/8 & 1.000 & Pk-type-low & .003 & .857 & 1.000 & .143 & .314 \\
+1B & 8/12/8 & .861 & On-sent-ridge & .125 & .705 & .861 & .157 & .422 \\
+1.4B & 8/12/8 & .899 & COM-sent-low & .072 & .770 & .899 & .129 & .431 \\
+\bottomrule
+\end{tabular}

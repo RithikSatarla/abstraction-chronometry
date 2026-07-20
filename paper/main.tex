@@ -1,0 +1,425 @@
+\documentclass[11pt]{article}
+
+\usepackage[review]{acl}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{amsthm}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{titlesec}
+
+\setlength{\dbltextfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\dblfloatsep}{6pt plus 2pt minus 2pt}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\floatsep}{6pt plus 2pt minus 2pt}
+\titlespacing*{\section}{0pt}{5pt}{3pt}
+\titlespacing*{\subsection}{0pt}{4pt}{2pt}
+
+\newtheorem{theorem}{Theorem}
+\newtheorem{proposition}{Proposition}
+\newtheorem{lemma}{Lemma}
+\newtheorem{definition}{Definition}
+
+\newcommand{\layeridx}{\ensuremath{\ell}}
+
+\title{Abstraction Chronometry: Finite-Protocol Invariance for Layerwise Probing}
+
+\author{Anonymous ACL submission}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Layerwise probing studies often read depth plots chronologically: surface features early, syntax later, semantics later still. But this chronology is not identified by a single final-checkpoint plot --- the measurement protocol is part of the estimand, and such claims are read off single plots without the controls they require. For finite protocol grids, \emph{abstraction chronometry} characterizes which precedences are protocol-invariant and what a scalar depth summary can identify. It gives exact target-permutation tests correcting selection over protocols, checkpoints, and sizes, plus a \emph{learned-origin evidence criterion} requiring final-hierarchy evidence and a rejecting final-minus-init contrast in the same orbit. We audit the ``BERT rediscovers the classical NLP pipeline'' claim family on Pythia, whose matched initializations and trajectories prior studies lacked. Across five sizes, two treebanks, a second family (one size), and a checkpoint trajectory, the criterion fails: the selected final statistic gives $p=.003$, yet the \emph{all-size} final-minus-init contrast is non-rejecting ($\Gamma=.143$, $p=.428$). A five-seed check agrees: the criterion fails in all fifteen cells, with per-size rejections seed-dependent. A causal probe (NNsight patching on subject--verb agreement) adds a matching finding: subject number is causally used \emph{shallower} than it is decodable, so decodability chronometry overstates depth.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+Layerwise probing studies often interpret depth chronologically: lower layers encode local or surface properties, middle layers encode syntax, and upper layers encode semantic or task-specific properties \citep{tenney2019bert,jawahar2019bert,rogers2020primer}. This reading is useful but depends on measurement choices left implicit. A plot of task performance by layer becomes a hierarchy only after several decisions: the score assigned to each layer, the rule mapping a score curve to a representative depth, the linguistic order placed on the tasks, the train/dev/test split, the probe class, and the set of layers and checkpoints considered. Different defensible choices induce different target orders, and \citet{niu2022doesbert} show directly that the pipeline reading is fragile to exactly these choices.
+
+We formulate layerwise hierarchy as protocol-indexed inference: a \emph{protocol} $p$ fixes the target set, data alignment, probe family, score, depth functional, linguistic ladder, and reporting rule, and a probing study estimates $H(M,p)$, the hierarchy score of model $M$ under $p$. We use \emph{chronometry} to mean inference about relative layer depths of target abstractions, not elapsed training time. A hierarchy claim is an invariance claim over a declared analysis grid, not a single selected plot. Layerwise hierarchy also has finite target-order structure: probing studies typically compare small target sets, so the null distribution over target orderings is small enough to enumerate exactly, and the correction for searching over protocol variants is a max statistic over that grid.
+
+\paragraph{Fit to this track.} This paper is a reproducibility study in the sense the special track asks for.\footnote{Anonymized artifact (code, per-layer curves, checksummed manifest): \url{https://anonymous.4open.science/r/abstraction-chronometry-433A/}.} The claim under audit --- that Transformer depth chronologically tracks linguistic abstraction --- is one of the most widely cited results in interpretability \citep{tenney2019bert,jawahar2019bert,rogers2020primer}, and it is typically reported from depth plots at a single trained checkpoint, without a permutation baseline, without correcting for the protocol choices used to build the plot, and without checking whether the ordering was \emph{learned} rather than already present at initialization. We supply exactly the missing controls --- an exact permutation null, a max-statistic correction for selection over protocols/checkpoints/sizes, and an initialization-contrast gate --- and apply them to Pythia \citep{biderman2023pythia}, a model family with matched initializations and public training trajectories that the original pipeline studies did not have available and did not test. Our aim is to \emph{enrich} the pipeline observation with the controls it needs and to map its boundary conditions, not to question the original findings: the depth structure may well exist; what our controls withhold is the specific claim that it was \emph{learned}.
+
+\paragraph{Contributions.}
+\begin{itemize}[leftmargin=*]\itemsep0.15em
+\item \textbf{Identification theory} for what a layerwise hierarchy claim can mean: a single depth vector, a product interval envelope, and a coupled finite protocol grid identify strictly nested classes of partial orders (total preorders, interval orders, and arbitrary finite partial orders, respectively; \S\ref{sec:ident}).
+\item \textbf{Exact, closed-form randomization tests} for total- and partial-order hierarchy claims that exploit the small target counts typical of probing papers, including a Mahonian-distribution shortcut that avoids Monte Carlo approximation, and a joint max-statistic correction for selection over protocols, checkpoints, and model sizes (\S\ref{sec:nulls}).
+\item A \textbf{learned-origin evidence criterion} that a final-checkpoint hierarchy must pass \emph{jointly} with a final-minus-initialization contrast, under the same permutation orbit, before it supports a claim of learned order rather than architecture/initialization prior (\S\ref{sec:origin}).
+\item An \textbf{empirical reproducibility audit} applying this framework to Pythia across five model sizes, five seeds, and a full 410M training trajectory on UD English-EWT: even a strongly selection-corrected final hierarchy (410M, $H=1.000$, $p=.003$) fails the learned-origin criterion, because its contrast against matched initialization does not reject --- so the chronological reading is not supported as \emph{learned} order (\S\ref{sec:empirical}).
+\item A \textbf{causal-chronometry probe} (NNsight activation patching on subject--verb agreement) showing that subject number is causally used \emph{shallower} than it is decodable in all five sizes (\S\ref{sec:causal}), so a decodability depth overstates where a feature is used --- the estimand gap made concrete on the causal axis.
+\end{itemize}
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Layerwise linguistic analysis.} Contextual representations distribute linguistic information unevenly across depth \citep{peters2018elmo,peters2018dissecting,devlin2019bert}. \citet{tenney2019bert} report that BERT recovers a progression resembling the classical NLP pipeline, and \citet{jawahar2019bert} group surface, syntactic, and semantic properties across lower, middle, and upper layers. \citet{niu2022doesbert} most directly anticipate our critique: re-examining these probes with GridLoc, varying token position, training round, and seed, they find the pipeline separation lacks conclusive support. Our contribution is complementary: they supply an alternative \emph{probe} on BERT; we supply a probe-agnostic \emph{identification and testing} layer for what any protocol grid can certify, plus a training-trajectory criterion the original BERT release cannot support but Pythia's checkpoints do. \citet{liu2019linguistic} compare encoders across probing tasks and \citet{hewitt2019structural} isolate tree geometry; these motivate our estimand: reported hierarchy should include the measurement protocol.
+
+\paragraph{Probing methodology.} Probing task suites made diagnostic evaluation standard \citep{conneau2018cram}, control tasks test whether probes memorize labels \citep{hewitt2019control}, and information-theoretic/MDL probing changes the score from raw accuracy to extractable information \citep{pimentel2020information,voita2020information}. Surveys note decodability, selectivity, causal use, and capacity answer different questions \citep{belinkov2022probing}. Causal critiques \citep{ravichander2021probing,elazar2021amnesic,amini2023naturalistic,ravfogel2020nullit} distinguish decodability from behavioral use; such scores fit the same protocol definition. Our target is identification of the reported order, not causal use.
+
+\paragraph{Training dynamics and statistical testing.} Representations change nonuniformly over training \citep{saphralopez2019svcca,voita2019bottomup,merchant2020happens}; Pythia makes such analysis practical with released model sizes and checkpoints under one recipe \citep{biderman2023pythia}. NLP methodology work has pushed for statistical testing and split sensitivity \citep{dror2018hitchhiker,gormanbedrick2019standardsplits}. Multiverse and specification-curve analyses make a related point outside NLP: with many defensible analyses, inference should account for the analysis set \citep{steegen2016multiverse,simonsohn2020specification,gelmanloken2013gardenforking}. We adapt this to probing hierarchies' finite target-order structure, with exact (not resampled) nulls where the target count permits.
+
+\section{Setup}
+\label{sec:setup}
+
+Let $M$ have layer index set $\mathcal{L}_M=\{0,\dots,L_{\max}(M)\}$, index $0$ the embedding state. Let $\mathcal{T}=\{t_1,\dots,t_m\}$ be linguistic targets. Smaller depth means earlier layer: $a\prec b$ denotes $d_a<d_b$. A probing protocol $p\in\mathcal{P}$ fixes (1) a target set and data distribution; (2) an alignment rule from model states to target instances; (3) a probe family and training procedure; (4) a score $S_{t,\ell}$ for target $t$ at layer $\ell$; (5) a depth functional $D$ mapping the layer-indexed curve $S_{t,\cdot}$ to $d_t\in\mathbb{R}$; (6) a target ladder $\pi_0$ or partial order $R_0$; (7) a reporting rule for uncertainty and multiple comparisons. We write $\mathbf{d}_p(M)=(d_{t_1},\dots,d_{t_m})$ for the depths under $p$; a finite analysis grid is always nonempty, and all cells in a grid share a fixed target set.
+
+For a ladder $\pi_0$ (possibly tied), the hierarchy score is $H(M,p)=A(\mathrm{rank}(\mathbf{d}_p(M)),\pi_0)$, where $A$ is a rank-agreement statistic (Spearman $\rho$, Kendall $\tau$, or top-$k$ agreement); $A$'s convention governs ties. For a finite grid $G\subset\mathcal{P}$, define $H_{\min}(M,G)=\min_{p\in G}H(M,p)$, $H_{\max}(M,G)=\max_{p\in G}H(M,p)$, and protocol diameter $\mathrm{diam}(M,G)=H_{\max}-H_{\min}$. The central object is the \emph{coupled depth set} $K(M,G)=\{\mathbf{d}_p(M):p\in G\}\subset\mathbb{R}^m$. For each target $t$, let $C_t$ have endpoints $\min_{p\in G}d_{p,t}$ and $\max_{p\in G}d_{p,t}$: the one-target projection of the coupled set. Keeping $K$ coupled asks what is invariant over the declared analysis set; replacing it by $\prod_t C_t$ asks what remains after cross-target protocol dependence is forgotten. A strict precedence $a\prec b$ is ruled out by an admissible set when every admissible depth vector has $d_a\ge d_b$; ties count against the strict claim.
+
+\section{Identification and Stability}
+\label{sec:ident}
+
+This section characterizes what \emph{any} depth-based protocol grid can identify; \S\ref{sec:empirical}'s audit exercises only the coupled-grid regime (Theorem~\ref{thm:coupled}) plus \S\ref{sec:nulls}--\S\ref{sec:origin}.
+
+\begin{proposition}[Rank-complete nonidentification]
+\label{prop:nonid}
+Let $\mathcal{P}^\star$ be a protocol class such that, for fixed model and observed score curves, admissible depth summaries realize every permutation of $m$ target ranks. Then no strict precedence between distinct targets is invariant over $\mathcal{P}^\star$.
+\end{proposition}
+
+We therefore ask which precedences are forced by the declared summaries. For a nonempty defended pair set $R_0$, define $H_R(\mathbf{d};R_0)=|R_0|^{-1}\sum_{(a,b)\in R_0}\psi(d_a,d_b)$, with $\psi(x,y)=\mathbb{I}\{x<y\}+\tfrac12\mathbb{I}\{x=y\}$.
+
+\begin{lemma}[Margin certificate]
+\label{lem:margin}
+If two protocols produce depth vectors $\mathbf{d},\mathbf{d}'$ with $\|\mathbf{d}-\mathbf{d}'\|_\infty\le\varepsilon$, every pair separated by more than $2\varepsilon$ keeps its order, and $|H_R(\mathbf{d};R_0)-H_R(\mathbf{d}';R_0)|\le B_R(\varepsilon)/|R_0|$, where $B_R(\varepsilon)=|\{(a,b)\in R_0:|d_a-d_b|\le 2\varepsilon\}|$.
+\end{lemma}
+
+\begin{theorem}[Exact coupled-protocol identification]
+\label{thm:coupled}
+For a finite protocol grid $G$, define $R_G=\{(a,b): d_{p,a}<d_{p,b}\ \text{for every } p\in G\}$. Then $a\prec b$ is identified by $G$ iff $\max_{p\in G}(d_{p,a}-d_{p,b})<0$; it is ruled out iff $\min_{p\in G}(d_{p,a}-d_{p,b})\ge 0$; otherwise $G$ leaves the pair unidentified.
+\end{theorem}
+
+These regimes are nested: a single scalar depth vector identifies only a total preorder, a product interval envelope exactly interval orders, and a finite coupled protocol set \emph{any} finite strict partial order (Theorem~\ref{thm:regimes}, Appendix~\ref{app:identification}). So a depth plot is not a claim by itself: it depends on the protocol class interpreting it. Interval-order and score-recalibration refinements, which the audit does not exercise, are there too.
+
+\section{Exact Finite Nulls}
+\label{sec:nulls}
+
+The random-ladder null asks whether observed agreement exceeds what is expected if target names were assigned to depths without regard to the proposed linguistic order. Conditional on the estimated depths and a ladder $\pi_0$ over $m$ targets, enumerate the unique permutations $\Pi(\pi_0)$ of its rank multiset ($|\Pi(\pi_0)|=m!$ for a strict total ladder). The exact one-sided p-value is $p_{\mathrm{ladder}}=N(A_{\mathrm{obs}})/|\Pi(\pi_0)|$, where $N(a)=\sum_{\pi\in\Pi(\pi_0)}\mathbb{I}\{A(\mathrm{rank}(\mathbf{d}),\pi)\ge a\}$. Exact enumeration is feasible for the target counts typical in layerwise probing papers; when permutations are sampled instead, the conservative $+1$ estimator applies \citep{phipsonsmyth2010permutation}.
+
+For a strict total ladder and Kendall-style hierarchy $H_K(\pi,\pi_0)=1-2V(\pi,\pi_0)/\binom{m}{2}$, where $V$ counts pairwise violations, the random-ladder null is the classical Mahonian inversion distribution \citep{macmahon1915combinatory,stanley2011enumerative}: the number of permutations with $V=v$ is the coefficient of $q^v$ in $\prod_{i=1}^m(1+q+\dots+q^{i-1})$, so the exact p-value is computed in closed form without Monte Carlo. The discreteness has power consequences: with $m=3$ even a perfect one-sided total order has minimum exact p-value $1/6$, so a $0.05$ test cannot reject; with $m=4$ the minimum is $1/24$. Non-rejection with few targets should be reported as low resolution, not absence of hierarchy.
+
+\paragraph{Selection-corrected validity.} Given a declared grid, the finite-orbit test fits each protocol cell, stores its target depths and definedness mask, applies each target permutation jointly to every stored cell, and reports the finite tail fraction. No probe is retrained inside the permutation orbit.
+
+\begin{theorem}[Exact validity for finite selection, cf.\ \citealp{fisher1935design,westfallyoung1993resampling}]
+\label{thm:validity}
+Let $\mathcal{A}$ be any finite analysis array fixed before observing or selecting on the association between target identities and depth arrays, with cells indexing protocols, checkpoints, model sizes, datasets, or products thereof, each a masked target-indexed array. For any deterministic functional $F$ (a maximum, a diameter, a checkpoint contrast, a max over model sizes) let $Z=F(\{H_a:a\in\mathcal{A}\})$. Applying the same permutation $\pi\in\Pi(\pi_0)$ jointly to every cell before computing $F$ gives an exact randomization p-value $p_Z=|\{\pi:Z^\pi\ge Z^{\mathrm{obs}}\}|/|\Pi(\pi_0)|$ under the joint random-ladder null.
+\end{theorem}
+
+The correction must use a \emph{joint} permutation: correcting each protocol independently and reporting the largest surviving score does not account for the analyst's search. The max test is $F=\max$; a diameter test is $F=\max-\min$; a checkpoint-contrast test is $F=H_{\max}(M_f,G)-H_{\max}(M_0,G)$ with alternative $\Gamma>0$.
+
+\begin{proposition}[Finite-resolution boundary]
+\label{prop:resolution}
+For an exact test with orbit values $Z^\pi$, attainable p-values are multiples of $1/|\Pi|$; a level-$\alpha$ one-sided test rejects exactly when $r(Z)\le\lfloor\alpha|\Pi|\rfloor$, where $r(z)=|\{\pi:Z^\pi\ge z\}|$.
+\end{proposition}
+
+\paragraph{Partial orders.} Some linguistic ladders are not total (e.g.\ morphology before dependency labels, but number vs.\ case theory-dependent). For a defended pair set $R_0\subseteq\mathcal{T}\times\mathcal{T}$ with active targets $\mathcal{T}_R$, define $H_R(M,p)=H_R(\mathbf{d}_p(M);R_0)$.
+
+\begin{proposition}[Exact null for a defended pair set]
+\label{prop:partialnull}
+For any fixed defended relation $R_0$, $\Pr\{H_R\ge h\}=|\{\pi\in\mathfrak{S}(\mathcal{T}_R):H_R(\pi)\ge h\}|/|\mathfrak{S}(\mathcal{T}_R)|$ under random target relabeling, without requiring $R_0$ transitive, complete, or derived from a unique linguistic theory.
+\end{proposition}
+
+If the scientific claim is a partial order, testing only the defended pairs matches the claim better than imposing a total ladder and scoring every other pair as evaluated.
+
+\section{Training-Origin Controls}
+\label{sec:origin}
+
+Final-checkpoint chronometry cannot by itself identify whether a hierarchy was \emph{learned} during training. This is the probing instance of a broader concern: interpretability methods yield plausible explanations even on randomly initialized networks \citep{meloux2025deadsalmons}, and our contrast against $M_0$ is the control that concern calls for.
+
+\begin{theorem}[Final-only origin nonidentification]
+\label{thm:finalonly}
+Fix any final depth array $\{\mathbf{d}_{f,p}:p\in G\}$. There exist two observational histories with the same final array and hence the same final hierarchy scores for every deterministic final-only statistic: one with unaligned initialization depths, one with initialization depths equal to the final depths (learned appearance vs.\ architecture/initialization prior). No statistic observing only $M_f$ identifies learned origin.
+\end{theorem}
+
+\begin{definition}[Learned-origin evidence criterion]
+\label{def:criterion}
+For a declared finite analysis array and level $\alpha$, a learned-origin claim passes only if the selected final-checkpoint statistic rejects under the joint target-permutation null \emph{and} the selected final-minus-initialization contrast is positive and rejects under the same orbit. Per-protocol pass counts are descriptive, not the criterion.
+\end{definition}
+
+The same target permutation is applied across all checkpoints and protocols, preventing ``final rejects, initialization does not'' from being read as learned ordering without a direct contrast test. If $M_0$ fails, $M_f$ passes, and the selected contrast is positive and rejects, the evidence supports learned order under $G$; if both pass and training only sharpens the interval, the evidence supports prior plus sharpening; if a selected protocol passes but the max statistic or interval fails, the claim is protocol-dependent.
+
+\section{Pythia Empirical Audit}
+\label{sec:empirical}
+
+The audit tests whether the Pythia/EWT hierarchy passes both learned-origin gates. The claim under audit was made on BERT, an encoder; no public BERT release ships the matched initializations and checkpoints the learned-origin criterion requires. We therefore test whether the chronological reading survives those controls in decoder-only LMs, on two independently trained families (Pythia at five sizes, OLMo-2 at one), so a negative result bounds the original claim's scope rather than refuting it. Pythia provides matched random initializations and training checkpoints across model sizes under one recipe \citep{biderman2023pythia}: \texttt{pythia-70m/160m/410m/1b/1.4b}. A separate \texttt{pythia-410m} trajectory evaluates \texttt{step0, step1000, step4000, step16000, step64000}, and the final checkpoint, on the full English-EWT development file.
+
+\paragraph{Targets and data.} We use the first 1000 sentences of UD English-EWT dev \citep{silveira2014gold,nivre2020universal} for the scale sweep (all 2001 sentences for the 410M trajectory). Targets from the CoNLL-U fields: word shape (collapsed orthographic pattern), UPOS, \texttt{Number\_with\_NoNumber} and \texttt{Number\_only}, dependency relation, and tree depth. The tied total ladder is word shape $<$ UPOS $<$ Number $<$ dependency relation $<$ tree depth, used as a pipeline-order stress test; a separate four-target partial order avoids the ambiguous Number rung: word shape before UPOS/dependency/tree depth, and UPOS before dependency/tree depth. Six-target tests use Spearman with average ranks for ties (exact orbit $6!/2!=360$).
+
+\paragraph{Protocol grid.} We cross three depth functionals (center of mass, peak with averaged ties, 80\%-onset), two split designs (sentence-heldout, type-heldout), and two probe families (ridge, low-rank via train-only TruncatedSVD), giving 12 protocols, for 120 scale-sweep cells (5 sizes $\times$ 2 checkpoints $\times$ 12 protocols). All hidden states, including the embedding, are used; depths are normalized by $L_{\max}(M)$. Full software versions, hyperparameters, and scoring rules are in Appendix~\ref{app:impl}.
+
+\begin{table*}[t]
+\centering\footnotesize
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccccrc}
+\toprule
+Size & Def.\ 0/f/m & $H^f_{\max}$ & Sel.\ & $p_f$ & Init max & Final max & $\Gamma$ & $p_\Gamma$ \\
+\midrule
+70M   & 8/12/8 & .893  & Pk-type-low   & .083 & .667 & .893  & .227 & .278 \\
+160M  & 8/12/8 & .861  & On-type-low   & .153 & .770 & .861  & .091 & .403 \\
+410M  & 8/12/8 & 1.000 & Pk-type-low   & .003 & .857 & 1.000 & .143 & .314 \\
+1B    & 8/12/8 & .861  & On-sent-ridge & .125 & .705 & .861  & .157 & .422 \\
+1.4B  & 8/12/8 & .899  & COM-sent-low  & .072 & .770 & .899  & .129 & .431 \\
+\bottomrule
+\end{tabular}
+\caption{Five-size Pythia audit, all-six-defined total-ladder rule. COM=center of mass, Pk=peak, On=80\% onset, sent/type=sentence/type-heldout, low=low-rank, ridge=linear ridge. $H^f_{\max}$, $p_f$, $\Gamma$ use exact 360-orbit tails; no size satisfies both parts of the learned-origin criterion.}
+\label{tab:scale}
+\end{table*}
+
+\begin{table}[t]
+\centering\scriptsize
+\setlength{\tabcolsep}{2pt}
+\begin{tabular}{lccccrc}
+\toprule
+Checkpoint & Def.\ & $H^c_{\max}$ & Match.\ max & $p_c$ & $\Gamma$ & $p_\Gamma$ \\
+\midrule
+step0     & 8/12  & .770 & .770 & .219 & --      & -- \\
+step1000  & 12/12 & .899 & .899 & .064 & .129    & .292 \\
+step4000  & 12/12 & .899 & .899 & .081 & .129    & .325 \\
+step16000 & 12/12 & .925 & .861 & .050 & .091    & .333 \\
+step64000 & 12/12 & .939 & .897 & .039 & .127    & .300 \\
+final     & 12/12 & .868 & .868 & .103 & .098    & .294 \\
+\bottomrule
+\end{tabular}
+\caption{Pythia-410M trajectory, full English-EWT dev (all 2001 sentences, so step0's values differ from 410M's 1000-sentence entry in Table~\ref{tab:scale}; selected protocol per checkpoint: step0 Pk-type-low; step1000/step4000 COM-sent-ridge; step16000 On-type-low; step64000 On-type-ridge; final Pk-sent-low). $H^c_{\max}$ is the max over all defined cells at that checkpoint; ``Match.\ max'' restricts to the 8 cells also defined at step0, and $\Gamma$ is that matched max minus step0's matched max (.770). No checkpoint satisfies the learned-origin criterion, though step16000 and step64000 individually cross the naive $p\le.05$ threshold on the final-only statistic ($p_c=.050$, $p_c=.039$) --- exactly the case the joint criterion is built to withhold, since neither checkpoint's contrast against initialization rejects.}
+\label{tab:trajectory}
+\end{table}
+
+\paragraph{Empirical audit result.} Table~\ref{tab:scale} shows the key pattern: a selected final cell can reject while the matched final-minus-initialization contrast does not. Pythia-410M rejects the per-size final max test ($p=.003$, 1/360) --- a near-perfect rank match ($H=1.000$) --- but every size still fails the learned-origin criterion. Selecting over all final size/protocol cells, the observed max $H=1.000$ has $p=.003$ (1/360); selecting over all initialization cells gives max $H=.857$ with $p=.178$ (64/360). The all-size selected contrast is positive but does not reject at $\alpha=.05$: $\Gamma=.143$, $p=.428$ (154/360). This is the sharpest illustration of why the two-part gate matters: a final-only statistic this extreme would pass almost any naive significance threshold on its own, yet the required contrast against initialization is nowhere close to rejecting.
+
+Table~\ref{tab:trajectory} checks whether this is only a final-checkpoint artifact. Across the full-dev 410M trajectory, two checkpoints (step16000, step64000) individually cross the naive $p\le.05$ threshold on the final-only statistic ($p_c=.050$, $p_c=.039$), which is exactly the failure mode the joint criterion exists to catch: neither checkpoint's contrast against initialization rejects ($p_\Gamma=.333$, $p_\Gamma=.300$), and every selected contrast from initialization across the trajectory fails to reject. The four-target defended-pair analysis reaches the same conclusion: the strongest scale-sweep partial-order final test is 70M ($H_{R,\max}=1.0$, $p=.083$, 2/24), but all partial-order contrasts fail, with the all-size contrast $\Gamma_R=0$, $p=.750$ (18/24). The best selected final hierarchy remains too close to the selected initialization hierarchy to support learned origin, and the all-size final array has large protocol diameter ($H_{\min}=.235$, $H_{\max}=1.000$, diam$=.765$) with no defended edge invariant across all final size/protocol cells.
+
+\paragraph{Second treebank.} Re-running the scale sweep on UD English-GUM --- a more diverse corpus (academic, fiction, web) than EWT --- reproduces the pattern for 70M/160M/410M (1B/1.4B omitted, memory). The criterion fails for every GUM size: the pooled final max is a near-perfect $H=.985$ ($p=.033$), yet the matched contrast against initialization does not reject ($\Gamma=.124$, $p=.275$) --- the EWT failure mode on a second corpus (Appendix~\ref{app:gum}).
+
+\paragraph{Second architecture family.} The audit repeats on OLMo-2-1B \citep{olmo2024olmo2}, which publishes a matched initialization. The criterion fails there at the \emph{first} gate ($H^f_{\max}=.754$, $p=.281$), and on the four-target partial order final and initialization both score $H_{R,\max}=1.000$ ($\Gamma=0$, $p=1.000$): an untrained network already realizes the defended ordering (Appendix~\ref{app:olmo}).
+
+\section{Causal Chronometry: Is Number Used Where It Is Decodable?}
+\label{sec:causal}
+
+The audit so far measures a \emph{decodability} depth: the layer at which a probe best reads a target. Decodability need not track \emph{causal use} \citep{ravichander2021probing,elazar2021amnesic}. We add a causal-depth protocol for one target --- subject number --- via NNsight activation patching, and ask whether the two depths agree.
+
+\paragraph{Setup.} On 176 subject--verb agreement minimal pairs (``The \{boy/boys\} beside the manager'' followed by a copula \emph{is}/\emph{are}), differing only in the subject's number, we patch the subject-token residual stream from the plural run into the singular run at each block and record the fraction of the copula agreement-logit gap that is restored. The center of mass of this causal-effect curve is a causal depth, on the same normalized (fraction-of-depth) scale as the number probe's decodability depth. Interventions are implemented as NNsight edits to module activations inside a trace (Appendix~\ref{app:impl}).
+
+\paragraph{Result.} Table~\ref{tab:causal} reports both depths across the five sizes. Causal depth is \emph{shallower} than decodability depth for all five sizes, by a mean of $.086$ of network depth (gaps $.049$--$.135$): the model causally reads subject number from the subject token earlier than a probe decodes it best. Consistent with this paper's own caution, we read the $5/5$ direction and the gap magnitudes as the evidence rather than lean on a significance test --- the five Pythia sizes share one training recipe and are not independent draws. Decodability chronometry therefore \emph{overstates} where number is used. The learned-origin audit and the causal probe agree in verdict but not in depth, reinforcing that a single depth number is protocol-relative rather than a property of the model.
+
+\begin{table}[t]
+\centering\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{lccc}
+\toprule
+Size & Decod.\ depth & Causal depth & Gap \\
+\midrule
+70M   & .486 & .437 & .049 \\
+160M  & .488 & .353 & .135 \\
+410M  & .490 & .433 & .058 \\
+1B    & .536 & .413 & .123 \\
+1.4B  & .501 & .438 & .064 \\
+\bottomrule
+\end{tabular}
+\caption{Decodability depth (mean center-of-mass depth of the number probe over the four split/probe cells) vs.\ causal depth (center of mass of the subject-number activation-patching effect curve), as fraction of network depth (main checkpoint, seed 2026). Causal $<$ decodability for all five sizes (\S\ref{sec:causal}).}
+\label{tab:causal}
+\end{table}
+
+\section{Discussion}
+\label{sec:disc}
+
+These experiments reproduce the \emph{claim pattern} --- a chronological reading of a final-checkpoint depth plot --- under controls the originals lacked, on two model families and with the training trajectory \citet{niu2022doesbert}'s BERT setting could not supply. A learned-origin claim should pair final-checkpoint plots with an initialization contrast and selection-aware permutation tests; \S\ref{sec:ident}--\S\ref{sec:origin} needs only per-layer curves, so other audits can reuse it.
+
+% Unnumbered per ACL formatting guidance: Limitations and Ethics sit after the
+% body, before References, and do not count toward the page limit.
+\section*{Limitations}
+\label{sec:lim}
+
+The finite tests are conditional on the protocol grid, target set, and ladder; they do not certify the grid is exhaustive or identify causal use, and the random-ladder null is a calibration device, not an exchangeability claim. The all-five-size result uses one seed; under five seeds on 70M/160M/410M it still fails in all fifteen cells, with per-size rejections seed-dependent (Appendix~\ref{app:seed}). The causal probe covers one target in one construction; the audit spans five sizes, two English treebanks, and one alignment rule, with the second family at one size --- a stress test, not general.
+
+\section*{Ethics Statement}
+This work audits publicly released models (Pythia, OLMo-2) on publicly released Universal Dependencies treebanks, under the licenses of their original releases. It involves no human subjects, no new data collection, and no personally identifying information. The contribution is diagnostic rather than generative: it reports what a common evidence format can and cannot certify. Because the paper's own conclusion is negative, we have tried to state its boundary conditions as explicitly as those of the claims we audit, so that this audit is not itself over-read.
+
+\bibliography{refs}
+
+\appendix
+
+\section{Proofs}
+\label{app:proofs}
+
+\paragraph{Proof of Proposition~\ref{prop:nonid}.} For any distinct $a,b$, rank completeness gives one admissible protocol with $a$ before $b$ and another with $b$ before $a$. Neither precedence is forced by the observed curves and the unmeasured protocol class. \qed
+
+\paragraph{Proof of Lemma~\ref{lem:margin}.} If $|d_a-d_b|>2\varepsilon$, the perturbation bound prevents $d_a-d_b$ from changing sign or reaching a tie, so only defended pairs counted by $B_R(\varepsilon)$ can change their contribution to $H_R$, and each contribution lies in $[0,1]$. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:coupled}.} The first equivalence is the universal quantifier over $K(M,G)$: $a$ precedes $b$ in every declared protocol exactly when every difference $d_{p,a}-d_{p,b}$ is negative, equivalent to the maximum difference being negative. The ruled-out condition is the analogous statement for $d_{p,a}\ge d_{p,b}$. If neither universal condition holds, one declared protocol supports the pair and another violates or ties it, so the pair is not invariant over $G$. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:interval}.} If $u_a<\ell_b$, every admissible $d_a$ is smaller than every admissible $d_b$. If $\ell_a\ge u_b$, every admissible $d_a$ is at least every admissible $d_b$. Otherwise $u_a\ge\ell_b$ gives the admissible choice $d_a=u_a,d_b=\ell_b$ (violates or ties), while $\ell_a<u_b$ gives $d_a=\ell_a,d_b=u_b$ (satisfies it). \qed
+
+\paragraph{Proof of Proposition~\ref{prop:bottleneck}.} Assume $u_a<\ell_b$ and $u_c<\ell_d$ but neither cross-comparison is identified: $u_a\ge\ell_d$ and $u_c\ge\ell_b$. Then $u_a<\ell_b\le u_c<\ell_d\le u_a$, a contradiction. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:regimes}.} (1) Sorting targets by a single depth vector gives a total preorder; identified strict comparisons are exactly the pairs ordered by it. (2) Follows from Theorem~\ref{thm:interval} together with the interval-order representation theorem \citep{fishburn1985interval}: scalar interval precedence has the form $u_a<\ell_b$, and every finite interval order admits such a representation. (3) A finite partial order is the intersection of its linear extensions. For each extension $e$, create protocol $p_e$ with scalar depths equal to the ranks in $e$. If $(a,b)\in R$, every extension puts $a$ before $b$, so $a\prec b\in R_{G_R}$. If $(a,b)\notin R$, either $bRa$ (no extension puts $a$ before $b$ universally) or $a,b$ incomparable, in which case the order-extension theorem \citep{szpilrajn1930extension,dushnikmiller1941partial} gives one extension with $a$ before $b$ and another with $b$ before $a$. Exactly the pairs in $R$ survive intersection over protocols. \qed
+
+\paragraph{Proof of Proposition~\ref{prop:nogo}.} The constant transform $g\equiv 1$ is admissible in the unanchored class and gives $D_g(s)=|\mathcal{L}|^{-1}\sum_\ell \ell=\bar\ell$ for every score curve $s$. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:levelset}.} For a finite layer set, weights $w_j=g(v_j)$ satisfy $w_0=0\le w_1\le\dots\le w_k$. Writing $w_j=\sum_{r\le j}\alpha_r$ with $\alpha_r=w_r-w_{r-1}\ge 0$, every tied-score-respecting isotone weight vector decomposes as $w_\ell=\sum_j \alpha_j \mathbb{1}\{s_\ell\ge c_j\}$, a nonnegative combination of nested upper-level-set indicators. Then $D_g(s)=\sum_j \alpha_j|U_j|\mu(U_j)/\sum_j\alpha_j|U_j|$ is a convex combination of upper-set means; conversely arbitrary monotone threshold functions realize the upper-set means exactly, and finite mixtures of thresholds give the convex hull. \qed
+
+\paragraph{Proof of Proposition~\ref{prop:recal}.} Apply Theorem~\ref{thm:interval} to $C_t=[\inf\mathcal{D}(s_t),\sup\mathcal{D}(s_t)]$. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:validity}.} Under the null, the mapping from target identities to masked depth values is uniform over the orbit of target permutations, conditional on the observed masked depth array and fixed inclusion rule. Because the same permutation is applied to every cell before applying $F$, dependence among protocols, checkpoints, and model sizes is preserved. The observed statistic is one draw from the finite orbit $\{Z^\pi\}$; counting the tail of that orbit gives the randomization test for the entire selected procedure. \qed
+
+\paragraph{Proof of Proposition~\ref{prop:resolution}.} The exact p-value is $r(Z)/|\Pi|$ by definition of the finite orbit; $r(Z)/|\Pi|\le\alpha$ is equivalent to $r(Z)\le\lfloor\alpha|\Pi|\rfloor$. \qed
+
+\paragraph{Proof of Proposition~\ref{prop:partialnull}.} Conditional on the active-target depth array, tie convention, fixed defended relation $R_0$, and fixed undefined-cell rule, the random-relabeling null makes each permutation in $\mathfrak{S}(\mathcal{T}_R)$ equally likely; $H_R$ is a deterministic function of that relabeling, so the one-sided tail probability at $h$ is the fraction of relabelings with $H_R(\pi)\ge h$. \qed
+
+\paragraph{Proof of Theorem~\ref{thm:finalonly}.} Keep the final depth array fixed. In the first history, choose initialization depths whose target ranks are reversed or otherwise unaligned with the defended ladder; in the second, choose initialization depths equal to the final depths. Both histories have identical $M_f$ observations, so every final-only statistic agrees, but their final-minus-initialization contrasts differ. \qed
+
+\section{Further Identification Results}
+\label{app:identification}
+
+These characterize what a \emph{different} depth summary (scalar interval envelopes; recalibrated centroids) can identify; \S\ref{sec:empirical}'s audit uses only the coupled grid (Theorem~\ref{thm:coupled}), so they are stated here for future audits. Proofs are in Appendix~\ref{app:proofs}.
+
+\begin{theorem}[Three scalar chronometry regimes]
+\label{thm:regimes}
+Let $R$ be a finite strict partial order over a finite target set. (1) A single scalar depth vector identifies only the strict part of a total preorder. (2) A product scalar-interval envelope identifies exactly interval orders. (3) A finite coupled protocol set can identify \emph{any} finite strict partial order: for every strict partial order $R$ there is a finite family of scalar-depth protocols $G_R$ with $R_{G_R}=R$.
+\end{theorem}
+
+Part (3) uses the standard fact that a finite partial order is the intersection of its linear extensions \citep{szpilrajn1930extension,dushnikmiller1941partial}: one protocol per extension, with scalar depths equal to that extension's ranks, intersects to exactly $R$.
+
+\begin{theorem}[Product-interval identified partial order, cf.\ \citealp{fishburn1985interval}]
+\label{thm:interval}
+Suppose each target depth is known only to lie in $C_t=[\ell_t,u_t]$. Precedence $a\prec b$ is implied by every vector in $\prod_t C_t$ iff $u_a<\ell_b$; it is ruled out iff $\ell_a\ge u_b$; otherwise it is not identified under the stated uncertainty.
+\end{theorem}
+
+Interval summaries should therefore be reported as certified pairwise precedences, not forced total rankings; for a finite grid the product-interval certificate is conservative unless target depths vary independently.
+
+\begin{proposition}[Scalar interval-envelope bottleneck]
+\label{prop:bottleneck}
+Let $a,b,c,d$ be four distinct targets and $R_C=\{(x,y):u_x<\ell_y\}$ the precedence relation identified by scalar depth intervals. If $a\prec b$ and $c\prec d$ are both in $R_C$, at least one cross-comparison ($a\prec d$ or $c\prec b$) is also in $R_C$: $R_C$ is an interval order and cannot contain an induced $2+2$.
+\end{proposition}
+
+A linguistic theory may have independent branches, but scalar interval-envelope chronometry cannot certify exactly two independent precedences: either one branch is unresolved, or the layer coordinate forces a cross-ordering.
+
+\paragraph{Depths under score recalibration.} Let $s=(s_\ell)_{\ell\in\mathcal{L}}$ be a target's layer curve and $D_g(s)=\sum_\ell \ell\, g(s_\ell)/\sum_\ell g(s_\ell)$ for $g$ nonnegative, nondecreasing, and \emph{anchored} at the curve minimum ($g(\min_\ell s_\ell)=0$, denominator positive). This covers center-of-mass depths over positive excess score after monotone recalibration.
+
+\begin{proposition}[Unanchored monotone no-go]
+\label{prop:nogo}
+If $g$ ranges over all nonnegative nondecreasing functions with no anchoring constraint, every target's depth envelope contains the mean layer $\bar\ell$, and no strict precedence can be certified by interval separation.
+\end{proposition}
+
+\begin{theorem}[Level-set envelope for anchored monotone centroids]
+\label{thm:levelset}
+Assume $s$ is nonconstant. Let $v_0<\dots<v_k$ be its distinct score levels ($v_0=\min_\ell s_\ell$), $\mathcal{D}(s)$ the closure of $\{D_g(s)\}$ over anchored nonnegative nondecreasing $g$, $\mathcal{U}^+(s)$ the nonempty upper sets $U_c(s)=\{\ell:s_\ell\ge c\}$ for $c>\min_\ell s_\ell$, and $\mu(U)=|U|^{-1}\sum_{\ell\in U}\ell$. Then $\mathcal{D}(s)=\mathrm{conv}\{\mu(U):U\in\mathcal{U}^+(s)\}$, so $\inf\mathcal{D}(s)=\min_c\mu(U_c(s))$ and $\sup\mathcal{D}(s)=\max_c\mu(U_c(s))$.
+\end{theorem}
+
+Peak layers alone do not determine hierarchy: a target with a late unique maximum but a broad early plateau can have a monotone-centroid envelope overlapping an earlier target's.
+
+\begin{proposition}[Recalibration-invariant chronology]
+\label{prop:recal}
+Assume $s_a$ and $s_b$ are nonconstant, so $\mathcal{D}(s_a),\mathcal{D}(s_b)$ are nonempty by Theorem~\ref{thm:levelset}. Under independently targetwise anchored monotone-centroid recalibration, $a\prec b$ is implied by the score curves iff $\sup\mathcal{D}(s_a)<\inf\mathcal{D}(s_b)$, ruled out iff $\inf\mathcal{D}(s_a)\ge\sup\mathcal{D}(s_b)$, and otherwise unidentified. A constant curve has $\mathcal{U}^+(s)=\emptyset$: no anchored $g$ gives a positive denominator, the target has no admissible monotone-centroid depth, and every pair involving it is unidentified. Baseline-clipped scores (Appendix~\ref{app:impl}) can produce such curves, so this case is excluded rather than vacuous.
+\end{proposition}
+
+\section{Implementation Details}
+\label{app:impl}
+
+\paragraph{Scoring.} For categorical targets, $S=\max\{0,(\mathrm{acc}-b)/(1-b)\}$ with $b$ the held-out majority baseline ($S=0$ if $b=1$); the continuous tree-depth score is $\max(0,\rho)$ with Spearman $\rho$ set to $0$ under constant ranks. A target depth is undefined when the probe curve is empty or the chosen center-of-mass/onset statistic has no positive score mass; peak depth averages all maximizers, including all-layer ties. Six-target cells require all six depths defined (excluded cells' indicator is fixed under every permutation); four-target partial-order cells require all targets in the defended edge set.
+
+\paragraph{Probes and splits.} Sentence-heldout splits group by sentence id; type-heldout splits group by lowercased word form. Both use one unstratified deterministic 70/30 group split, seed 2026. Probes are scikit-learn pipelines with train-only \texttt{StandardScaler}; linear cells use \texttt{Ridge}/\texttt{RidgeClassifier} ($\alpha=1.0$, \texttt{solver=auto}, \texttt{tol=1e-4}, \texttt{max\_iter=None}); low-rank cells insert train-only \texttt{TruncatedSVD} (rank $\min(64,n_{\mathrm{train}}-1,d-1)$, \texttt{algorithm=randomized}, \texttt{n\_iter=5}, \texttt{tol=0}, \texttt{random\_state=2026}). Training is subsampled without replacement after the split (seed 2026): 4000 instances for the scale sweep, 5000 for the 410M trajectory.
+
+\paragraph{Selected protocols, 410M trajectory.} Per checkpoint (Table~\ref{tab:trajectory}): step0 Pk-type-low; step1000/step4000 COM-sent-ridge; step16000 On-type-low; step64000 On-type-ridge; final Pk-sent-low.
+
+\paragraph{Causal patching (\S\ref{sec:causal}).} Minimal pairs are templated ``The \{sing/plur\} $\langle$prep$\rangle$ the $\langle$attractor$\rangle$'' with a following copula, keeping only noun pairs whose singular and plural forms are each a single leading-space token so the two prompts are position-aligned (176 pairs). For each block $\ell$ we run the plural prompt and save the subject-token residual $\mathbf{h}^{(\ell)}$ via an NNsight \texttt{.save()}; then, in a second trace on the singular prompt, we assign $\mathbf{h}^{(\ell)}$ into the subject-token position of block $\ell$'s output (an in-place NNsight activation edit) and read the copula logits. The effect is the fraction of the plural-minus-singular agreement-logit gap restored, averaged over pairs; causal depth is its center of mass over blocks. Decodability depth for number is the mean center-of-mass depth of the \texttt{Number\_only} probe curve over the four split/probe cells. Both are normalized to fraction of network depth (block $\ell$ output aligned to hidden state $\ell{+}1$).
+
+\paragraph{Software.} Python 3.12.13, Windows 11, NVIDIA GeForce RTX 3060 Ti (CUDA 12.4); \texttt{torch} 2.6.0+cu124 \citep{paszke2019pytorch}, \texttt{nnsight} 0.7.0, \texttt{transformers} 5.14.1 \citep{wolf2020transformers}, \texttt{datasets} not used for corpus loading (UD English-EWT read directly via \texttt{conllu}), \texttt{scikit-learn} 1.6.1 \citep{pedregosa2011scikit}, \texttt{numpy} \citep{harris2020numpy}, \texttt{huggingface-hub}. Hidden states are extracted via NNsight module-level interventions on the target model's embedding layer, each transformer block, and the final layer norm; the resulting per-layer states are assembled in the order that reproduces HuggingFace's \texttt{output\_hidden\_states} convention, and this assembly was verified against that reference path to exact (zero max absolute difference) numerical parity before any probing was run. Embedding state included; depths normalized by $L_{\max}(M)$. Init/intermediate checkpoints use Hugging Face revision labels (\texttt{step0}, \texttt{step1000}, \dots); final models use the repository default revision (\texttt{main}). The released artifact manifest records SHA-256 checksums for every released result file, the resolved software environment, and both random seeds.
+
+\section{Seed Robustness Check}
+\label{app:seed}
+
+To test whether \S\ref{sec:empirical}'s conclusions depend on the primary seed (2026), we re-ran the full protocol grid (both checkpoints, all 12 protocols) for the three smallest sizes --- 70M, 160M, 410M --- under five independent seeds (2026, 4177, 5023, 6180, 8191) governing the group split and probe subsampling, with the same code, targets, and scoring as Appendix~\ref{app:impl}. (1B/1.4B remain single-seed: re-extracting them for extra seeds exceeds the memory of the 8GB machine used.) All cells are all-six-defined 8/12/8. Table~\ref{tab:seedcheck} reports all fifteen size--seed cells.
+
+\begin{table}[h]
+\centering\scriptsize
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{llccccc}
+\toprule
+Size & Seed & Init max & Final max & $p_f$ & $\Gamma$ & $p_\Gamma$ \\
+\midrule
+70M  & 2026 & .667 & .893  & .083 & .227    & .278 \\
+70M  & 4177 & .857 & .899  & .053 & .041    & .528 \\
+70M  & 5023 & .664 & .840  & .111 & .176    & .383 \\
+70M  & 6180 & .664 & .899  & \textbf{.044} & .234 & .256 \\
+70M  & 8191 & .664 & .899  & .058 & .234    & .422 \\
+\midrule
+160M & 2026 & .770 & .861  & .153 & .091    & .403 \\
+160M & 4177 & .851 & .899  & .058 & .048    & .525 \\
+160M & 5023 & .857 & .840  & .144 & $-$.017 & .644 \\
+160M & 6180 & .664 & .840  & .208 & .176    & .378 \\
+160M & 8191 & .664 & .899  & .061 & .234    & .439 \\
+\midrule
+410M & 2026 & .857 & 1.000 & \textbf{.003} & .143 & .314 \\
+410M & 4177 & .664 & .928  & .058 & .263    & .264 \\
+410M & 5023 & .664 & .956  & \textbf{.028} & .292 & .231 \\
+410M & 6180 & .812 & .899  & .072 & .087    & .453 \\
+410M & 8191 & .770 & .897  & .089 & .127    & .586 \\
+\bottomrule
+\end{tabular}
+\caption{Scale-sweep cells for the three re-run sizes under five seeds ($p_f$, $p_\Gamma$ exact 360-orbit tails). \textbf{Bold} $p_f$ marks the three cells that cross the naive $\alpha=.05$ per-size threshold. No size--seed cell satisfies the learned-origin criterion.}
+\label{tab:seedcheck}
+\end{table}
+
+The learned-origin criterion fails in all fifteen cells. The per-size final-max test that occasionally crosses the naive $\alpha=.05$ threshold does so \emph{unstably across seeds}: 410M rejects under two of five seeds (2026 $p=.003$, 5023 $p=.028$) but not the other three ($p=.058,.072,.089$); 70M rejects under one of five (6180, $p=.044$); 160M under none --- three of fifteen cells total, with no cell reproducing across seeds. This is exactly the fragility Theorem~\ref{thm:validity}'s joint selection correction and Definition~\ref{def:criterion}'s two-part gate are built to absorb: which single cell crosses is seed-dependent, and none survives the contrast against matched initialization. A report stopping at any one seed's per-size test would have overstated the evidence for whichever size happened to cross.
+
+\section{GUM Second-Treebank Audit}
+\label{app:gum}
+The scale sweep re-run on UD English-GUM dev (first 1000 sentences, 17{,}205 instances, seed 2026), for the three sizes that fit in the 8GB machine. All cells are all-six-defined (8/12/8). No size satisfies the learned-origin criterion (Table~\ref{tab:gum}). The pattern matches EWT: a strongly selection-corrected final (70M, $H=.985$, $p_f=.017$; pooled final max $H=.985$, $p=.033$) that fails its contrast against matched initialization ($\Gamma=.124$, $p_\Gamma=.275$).
+
+\begin{table}[h]
+\centering\small
+\setlength{\tabcolsep}{5pt}
+\begin{tabular}{lccccc}
+\toprule
+Size & Init max & Final max & $p_f$ & $\Gamma$ & $p_\Gamma$ \\
+\midrule
+70M  & .672 & .985 & .017 & .313    & .131 \\
+160M & .861 & .899 & .064 & .038    & .511 \\
+410M & .861 & .812 & .156 & $-$.049 & .542 \\
+\bottomrule
+\end{tabular}
+\caption{Scale-sweep cells on UD English-GUM dev (seed 2026; 1B/1.4B omitted, memory, as in Appendix~\ref{app:seed}). $p_f$, $p_\Gamma$ use exact 360-orbit tails. No size satisfies the learned-origin criterion.}
+\label{tab:gum}
+\end{table}
+
+\section{Second Architecture Family (OLMo-2)}
+\label{app:olmo}
+The Pythia audit fixes one architecture family and one training recipe. To separate ``the chronological reading fails under controls'' from ``Pythia is unusual'', we repeat the audit on OLMo-2-1B \citep{olmo2024olmo2}, an independently trained decoder-only family. OLMo-2 rather than OLMo-1 because the criterion needs $M_0$: OLMo-2 publishes the matched random initialization as \texttt{stage1-step0-tokens0B}, whereas OLMo-1-hf's earliest public branch is \texttt{step1000-tokens4B}, already trained on 4B tokens. Grid, targets, ladder, tie convention, split seed, and scoring are exactly those of Table~\ref{tab:scale}; only the model changes. GPTNeoX and OLMo-2 name their modules differently, so the NNsight assembly is re-verified against \texttt{output\_hidden\_states} for each family separately (zero max absolute difference in both).
+
+\begin{table}[t]
+\centering\small
+\begin{tabular}{lcc}
+\toprule
+ & Six-target ladder & Four-target partial \\
+\midrule
+Defined 0/f/m & \multicolumn{2}{c}{8/12/8} \\
+Selected      & \multicolumn{2}{c}{Pk-sent-low} \\
+Init max      & .664 & 1.000 \\
+Final max     & .754 & 1.000 \\
+$p_f$         & .281 & .333 \\
+$\Gamma$      & .089 & .000 \\
+$p_\Gamma$    & .483 & 1.000 \\
+Criterion     & fails & fails \\
+\bottomrule
+\end{tabular}
+\caption{OLMo-2-1B, UD English-EWT dev (1000 sentences, seed 2026), matched initialization \texttt{stage1-step0-tokens0B} vs.\ final. Exact 360-orbit ($6!/2!$) and 24-orbit tails. Failure mode differs from Pythia's: the final-only statistic does not reject, so the contrast gate is never reached.}
+\label{tab:olmo}
+\end{table}
+
+Table~\ref{tab:olmo} reports both tests. The criterion fails, but for a different reason than in Pythia: there the selected final statistic rejected ($p=.003$) and the initialization contrast did not, whereas here the final statistic does not reject at all ($H^f_{\max}=.754$, $p=.281$), so the second gate is never reached. The pipeline ordering is thus not merely unsupported as \emph{learned} in OLMo-2 --- at this grid and ladder it is not established even as a final-checkpoint description. This non-rejection is informative rather than structural: the same 360-orbit test attains $p=.003$ on Pythia-410M (Table~\ref{tab:scale}), so the procedure can reject when the ordering is present, and $p=.281$ here reflects the data rather than a test that cannot discriminate.
+
+The four-target partial order is the sharper observation. Final and initialization both attain $H_{R,\max}=1.000$, giving $\Gamma=0$ exactly ($p=1.000$): the untrained network already realizes every defended precedence, so the trained model's perfect score carries no information about training. This is Theorem~\ref{thm:finalonly} instantiated rather than argued, and it is the cleanest case in the paper for why a final-only plot cannot support a learned-order claim. Its $p=.333$ also illustrates Proposition~\ref{prop:resolution}: with four targets the attainable tail is coarse, so this cell could not have rejected at $\alpha=.05$ regardless of the data.
+
+\section{Reproducibility}
+\label{app:repro}
+Code, per-layer probe curves, target-construction logic, and run logs for the primary audit (seed 2026, Tables~\ref{tab:scale}--\ref{tab:trajectory}), the five-seed check (Table~\ref{tab:seedcheck}), and the causal-patching experiment (Table~\ref{tab:causal}) are released anonymously at \url{https://anonymous.4open.science/r/abstraction-chronometry-433A/}, with a checksummed artifact manifest recording exact SHA-256 hashes for every released file. Both hidden-state extraction and the causal interventions run through NNsight (Appendix~\ref{app:impl}), which is compatible with remote execution through NDIF; the extraction assembly is verified against HuggingFace's \texttt{output\_hidden\_states} reference path to exact (zero max absolute difference) numerical parity before any probing was run. The full grid reproduces with \texttt{uv sync \&\& ac-run all}.
+
+\end{document}

@@ -1,0 +1,40 @@
+[project]
+name = "abstraction-chronometry"
+version = "0.1.0"
+description = "Abstraction Chronometry: finite-protocol invariance for layerwise probing (BlackboxNLP 2026 reproducibility artifact)"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.4",
+    "nnsight>=0.4",
+    "transformers>=4.44",
+    "datasets>=2.20",
+    "scikit-learn>=1.5",
+    "numpy>=1.26",
+    "scipy>=1.13",
+    "conllu>=4.5",
+    "pyyaml>=6.0",
+    "tqdm>=4.66",
+    "truststore>=0.10.4",
+    "psutil>=7.2.2",
+    "pypdf>=6.14.2",
+]
+
+[project.scripts]
+ac-run = "abstraction_chronometry.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.11.21,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = ["pytest>=8.0"]
+
+# PyTorch CUDA wheels (Windows + CUDA 12.x). Falls back to CPU wheels elsewhere.
+[[tool.uv.index]]
+name = "pytorch-cu124"
+url = "https://download.pytorch.org/whl/cu124"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu124", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
